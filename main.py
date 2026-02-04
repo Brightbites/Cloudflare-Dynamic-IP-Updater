@@ -35,6 +35,8 @@ def get_current_ipv6():
 
 # Get the DNS record ID for a given record name
 def get_record_id(api_token, zone_id, record_name):
+    global record_id_ipv4
+    global record_id_ipv6
     url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records"
     headers = {
         "Authorization": f"Bearer {api_token}",
@@ -47,9 +49,11 @@ def get_record_id(api_token, zone_id, record_name):
         response.raise_for_status()
         records = response.json().get("result", [])
         if records:
-            record_id = records[0]["id"]
-            print(f"Found Record ID for {record_name}: {record_id}")
-            return record_id
+            record_id_ipv4 = records[0]["id"]
+            record_id_ipv6 = records[1]["id"]
+            print(f"Found Record ID for {record_name}: {record_id_ipv4}")
+            print(f"Found Record ID for {record_name}: {record_id_ipv6}")
+            return (record_id_ipv4, record_id_ipv6)
         else:
             print(f"Record not found: {record_name}")
             return None
@@ -99,7 +103,7 @@ def main():
     current_ipv4 = get_current_ipv4()
     current_ipv6 = get_current_ipv6()
 
-    if current_ipv4 & current_ipv6 is None:
+    if current_ipv4 is None:
         print("Failed to retrieve the current IPs. Skipping update.")
         return
 
@@ -112,13 +116,15 @@ def main():
         print(f"Processing record: {record_name}")
 
         # Get the DNS record ID from Cloudflare API
-        record_id = get_record_id(api_token, zone_id, record_name)
+        get_record_id(api_token, zone_id, record_name)
         
-        if record_id:
-            if current_ipv6 is None:
-                update_record(api_token, zone_id, record_id, record_name, current_ipv4, proxied, False)
-            if current_ipv4 is None:
-                update_record(api_token, zone_id, record_id, record_name, current_ipv6, proxied, True)
+        if record_id_ipv4:
+            update_record(api_token, zone_id, record_id_ipv4, record_name, current_ipv4, proxied, False)
+        
+        if record_id_ipv6:
+            update_record(api_token, zone_id, record_id_ipv6, record_name, current_ipv6, proxied, True)
+
+
 if __name__ == "__main__":
     print("---Starting Cloudflare Dynamic IP Updater---\n")
     while True:
