@@ -15,11 +15,20 @@ def load_config():
         exit()
 
 # Get the current public IP address
-def get_current_ip():
+def get_current_ipv4():
     try:
-        ip = requests.get('https://api.ipify.org').text
-        print(f"Current IP: {ip}")
-        return ip
+        ipv4 = requests.get('https://api.ipify.org').text
+        print(f"Current IP: {ipv4}")
+        return ipv4
+    except requests.RequestException as e:
+        print(f"Error getting IP address: {e}")
+        return None
+    
+def get_current_ipv6():
+    try:
+        ipv6 = requests.get('https://api64.ipify.org').text
+        print(f"Current IP: {ipv6}")
+        return ipv6
     except requests.RequestException as e:
         print(f"Error getting IP address: {e}")
         return None
@@ -51,19 +60,29 @@ def get_record_id(api_token, zone_id, record_name):
         return None
 
 # Update the DNS record with the new IP address
-def update_record(api_token, zone_id, record_id, record_name, ip_address, proxied):
+def update_record(api_token, zone_id, record_id, record_name, ip_address, proxied, isV6):
     url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/{record_id}"
     headers = {
         "Authorization": f"Bearer {api_token}",
         "Content-Type": "application/json"
     }
-    data = {
-        "type": "A",
-        "name": record_name,
-        "content": ip_address,
-        "ttl": 1,  # Auto TTL
-        "proxied": proxied
-    }
+
+    if isV6:
+        data = {
+            "type": "AAAA",
+            "name": record_name,
+            "content": ip_address,
+            "ttl": 1,  # Auto TTL
+            "proxied": proxied
+        }
+    else:
+        data = {
+            "type": "A",
+            "name": record_name,
+            "content": ip_address,
+            "ttl": 1,  # Auto TTL
+            "proxied": proxied
+        }
 
     try:
         response = requests.put(url, headers=headers, json=data)
@@ -77,10 +96,11 @@ def update_record(api_token, zone_id, record_id, record_name, ip_address, proxie
 # Main function to check IP and update records
 def main():
     config = load_config()
-    current_ip = get_current_ip()
+    current_ipv4 = get_current_ipv4()
+    current_ipv6 = get_current_ipv6()
 
-    if current_ip is None:
-        print("Failed to retrieve the current IP. Skipping update.")
+    if current_ipv4 & current_ipv6 is None:
+        print("Failed to retrieve the current IPs. Skipping update.")
         return
 
     for record in config["records"]:
@@ -95,8 +115,10 @@ def main():
         record_id = get_record_id(api_token, zone_id, record_name)
         
         if record_id:
-            update_record(api_token, zone_id, record_id, record_name, current_ip, proxied)
-
+            if current_ipv6 is None:
+                update_record(api_token, zone_id, record_id, record_name, current_ipv4, proxied, False)
+            if current_ipv4 is None:
+                update_record(api_token, zone_id, record_id, record_name, current_ipv6, proxied, True)
 if __name__ == "__main__":
     print("---Starting Cloudflare Dynamic IP Updater---\n")
     while True:
